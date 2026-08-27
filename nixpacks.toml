@@ -2,4 +2,4 @@
 cmds = ["npm run build", "npx prisma generate"]
 
 [start]
-cmd = "node dist/main"
+cmd = "node dist/src/main"
