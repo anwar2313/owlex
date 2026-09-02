@@ -21,6 +21,12 @@ export class MailService implements OnModuleInit {
         // Gmail app passwords are often pasted with spaces — SMTP rejects those
         pass: (this.get('EMAIL_PASS') || '').replace(/\s+/g, ''),
       },
+      // nodemailer has no default timeout, so a blocked or filtered SMTP port
+      // leaves the socket open for minutes and the contact form sits on
+      // "SENDING..." forever. Fail fast so the UI can report the failure.
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
   }
 
