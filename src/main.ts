@@ -6,9 +6,23 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  // FRONTEND_URL may hold a comma-separated list (local dev + deployed site)
+  const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    // Browsers send Origin without a trailing slash, so a configured
+    // "https://site.com/" would never match — normalise it away.
+    .map((url) => url.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
   app.enableCors({
-    origin: [frontendUrl],
+    origin: (origin, callback) => {
+      // Allow non-browser clients (curl, server-side fetch) which send no Origin
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin ${origin} not allowed by CORS`), false);
+    },
     credentials: true,
   });
 
@@ -17,7 +31,9 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: true,
+      // Strip unknown fields instead of rejecting the whole submission —
+      // the contact form must not 400 just because it posts an extra field.
+      forbidNonWhitelisted: false,
       transform: true,
     }),
   );
