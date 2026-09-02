@@ -31,6 +31,18 @@ export class MailService implements OnModuleInit {
   }
 
   async onModuleInit() {
+    if (this.resendKey) {
+      this.logger.log(
+        `Using the Resend HTTP API — contact emails go to ${this.adminEmail}`,
+      );
+      return;
+    }
+
+    this.logger.warn(
+      'RESEND_API_KEY is not set, falling back to SMTP. Railway blocks outbound ' +
+        'SMTP, so delivery will fail there until the key is configured.',
+    );
+
     if (!this.get('EMAIL_USER') || !this.get('EMAIL_PASS')) {
       this.logger.error(
         'EMAIL_USER / EMAIL_PASS are not set — contact form emails will NOT be sent.',
@@ -55,6 +67,18 @@ export class MailService implements OnModuleInit {
 
   private get adminEmail(): string {
     return this.get('ADMIN_EMAIL') || DEFAULT_ADMIN_EMAIL;
+  }
+
+  private get resendKey(): string | undefined {
+    return this.get('RESEND_API_KEY') || undefined;
+  }
+
+  /**
+   * Resend only accepts a verified domain as the sender. Until one is set up,
+   * onboarding@resend.dev works but can only deliver to the account owner.
+   */
+  private get mailFrom(): string {
+    return this.get('MAIL_FROM') || 'Owlex Contact <onboarding@resend.dev>';
   }
 
   async sendContactNotification(data: {
@@ -91,15 +115,56 @@ export class MailService implements OnModuleInit {
       data.message,
     ].join('\n');
 
-    await this.transporter.sendMail({
-      from: `"Owlex Contact" <${this.get('EMAIL_USER')}>`,
-      to: this.adminEmail,
-      replyTo: data.email,
-      subject: `New inquiry from ${data.name} — Owlex`,
-      text,
-      html,
-    });
+    const subject = `New inquiry from ${data.name} — Owlex`;
+
+    if (this.resendKey) {
+      await this.sendViaResend({ subject, text, html, replyTo: data.email });
+    } else {
+      await this.transporter.sendMail({
+        from: `"Owlex Contact" <${this.get('EMAIL_USER')}>`,
+        to: this.adminEmail,
+        replyTo: data.email,
+        subject,
+        text,
+        html,
+      });
+    }
 
     this.logger.log(`Contact email sent to ${this.adminEmail} from ${data.email}`);
+  }
+
+  /**
+   * Deliver over Resend's HTTPS API.
+   *
+   * Railway blocks outbound SMTP, so nodemailer can never connect from there.
+   * This goes out over port 443 like any other HTTP request.
+   */
+  private async sendViaResend(msg: {
+    subject: string;
+    text: string;
+    html: string;
+    replyTo: string;
+  }): Promise<void> {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.resendKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: this.mailFrom,
+        to: [this.adminEmail],
+        reply_to: msg.replyTo,
+        subject: msg.subject,
+        text: msg.text,
+        html: msg.html,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`Resend API responded ${res.status}: ${detail.slice(0, 300)}`);
+    }
   }
 }
