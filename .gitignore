@@ -1,3 +1,36 @@
+# dependencies
 node_modules/
+
+# build output
 dist/
+build/
+.next/
+*.tsbuildinfo
+
+# secrets — keep .env.example tracked
 .env
+.env.local
+.env.*.local
+.env.production
+!.env.example
+
+# logs & debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+out.txt
+err.txt
+
+# backups
+*.bundle
+
+# editor / tooling
+.kilo/
+.kilocode/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
